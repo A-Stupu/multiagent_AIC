@@ -207,7 +207,79 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
         legal moves.
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        
+        bestScore = -float('inf')
+        bestActions = []  # actions list
+        
+        legalActions = gameState.getLegalActions(0)
+
+        if Directions.STOP in legalActions: # remove STOP action
+            legalActions.remove(Directions.STOP)
+
+        for action in legalActions:
+            successorState = gameState.generateSuccessor(0, action)
+            
+            score = self.getValue(successorState, 1, self.depth)
+            
+            if score > bestScore:
+                bestScore = score
+                bestActions = [action] 
+            elif score == bestScore:
+                bestActions.append(action) 
+                
+        return random.choice(bestActions)
+                
+
+    def getValue(self, gameState, agentIndex, depth):
+
+        if gameState.isWin() or gameState.isLose():
+            return self.evaluationFunction(gameState)
+        
+        if agentIndex == 0:
+            return self.getMaxValue(gameState, depth) # Pacman is max
+        else:
+            return self.getExpectValue(gameState, agentIndex, depth) # Ghost is expectimax
+
+    def getMaxValue(self, gameState, depth): # Pacman
+
+        if depth == 0: # terminal test
+            return self.evaluationFunction(gameState)
+            
+        v = -float('inf') # minus infinity
+        
+        legalActions = gameState.getLegalActions(0)
+    
+        if not legalActions: # no legal actions
+            return self.evaluationFunction(gameState)
+        
+        for action in legalActions: 
+            successorState = gameState.generateSuccessor(0, action)
+            v = max(v, self.getValue(successorState, 1, depth))
+            
+        return v
+
+    def getExpectValue(self, gameState, agentIndex, depth): # Ghosts
+        
+        v = 0.0 # expected value
+        
+        legalActions = gameState.getLegalActions(agentIndex)
+        
+        if not legalActions:
+            return self.evaluationFunction(gameState)
+            
+        numAgents = gameState.getNumAgents() # bnumber of ghosts + pacman
+        
+        probability = 1.0 / len(legalActions) # randomly choose among legal actions
+
+        for action in legalActions:
+            successorState = gameState.generateSuccessor(agentIndex, action)
+            
+            if agentIndex == numAgents - 1:
+                v += probability * self.getValue(successorState, 0, depth - 1)
+            else:
+                v += probability * self.getValue(successorState, agentIndex + 1, depth)
+                
+        return v
 
 def betterEvaluationFunction(currentGameState):
     """
