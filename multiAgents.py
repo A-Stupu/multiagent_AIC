@@ -43,7 +43,7 @@ class ReflexAgent(Agent):
         legalMoves = gameState.getLegalActions()
 
         # Choose one of the best actions
-        scores = [self.evaluationFunction(gameState, action) for action in legalMoves]
+        scores = [self.betterEvaluationFunction(gameState, action) for action in legalMoves]
         bestScore = max(scores)
         bestIndices = [index for index in range(len(scores)) if scores[index] == bestScore]
         chosenIndex = random.choice(bestIndices) # Pick randomly among the best
@@ -286,10 +286,85 @@ def betterEvaluationFunction(currentGameState):
     Your extreme ghost-hunting, pellet-nabbing, food-gobbling, unstoppable
     evaluation function (question 8).
 
-    DESCRIPTION: <write something here so we know what you did>
+    DESCRIPTION: 
+    这个评估函数基于几个关键的启发式（heuristics）来给当前状态打分。
+    1. 终止状态：如果当前是赢/输的状态，直接返回无穷大/无穷小，给算法最强烈的信号。
+    2. 食物：计算到“最近食物”的距离（主要驱动力）和“剩余食物总数”（次要驱动力）。
+    3. 鬼：
+       - 危险的鬼：如果离得太近（距离<2），视为“立即死亡”，返回无穷小。
+       - 害怕的鬼：如果存在，计算到“最近的害怕的鬼”的距离，作为“奖励目标”。
+    4. 胶囊：计算“剩余胶囊总数”，作为次要惩罚。
+    
+    最终分数 = 基础分 - 食物距离成本 - 害怕的鬼距离成本 - 剩余工作量成本
+    （注意：我们通过“最小化成本”来“最大化分数”）
     """
     "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    # 提取关键状态信息
+    pos = currentGameState.getPacmanPosition()
+    foodList = currentGameState.getFood().asList()
+    ghostStates = currentGameState.getGhostStates()
+    capsules = currentGameState.getCapsules()
+    
+    # 1. 终止状态检查 (最优先)
+    # ---------------------------------
+    
+    # 1a. 胜利状态：没有食物了
+    if not foodList:
+        return float('inf') # 胜利！这是最好的状态。
+
+    # 1b. 立即失败状态：撞上危险的鬼
+    for ghost in ghostStates:
+        dist = manhattanDistance(pos, ghost.getPosition())
+        if ghost.scaredTimer == 0 and dist < 2:
+            # 如果鬼不害怕，且距离小于2（即下一步就可能被吃）
+            # 这是一个“死局”，立即给予最低分
+            return -float('inf') 
+
+    # 2. 启发式成本计算 (Heuristics)
+    # ---------------------------------
+    # 我们把问题变成“最小化成本”，而不是“最大化奖励”。
+    # 基础分是游戏自带的，我们在此之上增加或减少。
+    
+    score = currentGameState.getScore()
+
+    # --- 启发式 1: 驱动力 (食物) ---
+    # Pac-Man 的主要工作是吃豆
+    
+    # W_FOOD_DIST (权重): 1.5
+    # Pac-Man 应该始终被“拉”向最近的食物。
+    # 这是一个线性的“成本”，距离越远，分数越低。
+    closestFoodDist = min([manhattanDistance(pos, food) for food in foodList])
+    score -= closestFoodDist * 1.5
+
+    # --- 启发式 2: 机会 (害怕的鬼) ---
+    # 害怕的鬼是“高分食物”。
+    
+    # W_SCARED_GHOST (权重): 2.0
+    scaredGhosts = [g for g in ghostStates if g.scaredTimer > 1]
+    if scaredGhosts:
+        closestScaredGhostDist = min([manhattanDistance(pos, g.getPosition()) for g in scaredGhosts])
+        # 我们也想靠近它，所以也把它当作“成本”来减
+        # 它的权重 (2.0) 应该高于食物 (1.5)，意味着鬼更“诱人”
+        score -= closestScaredGhostDist * 2.0
+
+   # --- 启发式 3: 驱动力 (胶囊) ---
+    if capsules: # 只有在还有胶囊时才计算
+        closestCapsuleDist = min([manhattanDistance(pos, cap) for cap in capsules])
+        # 我们给胶囊一个“拉力”，但权重 (1.0) 设的比食物 (1.5) 低
+        # 这样 Pac-Man 不会为了一个远处的胶囊而放弃近处的食物
+        score -= closestCapsuleDist * 1.0 
+    
+    # --- 启发式 4: 剩余工作量 (食物和胶囊) ---
+    # 每一个剩余的豆子都是一个“工作量”，给予一个固定的成本。
+    score -= len(foodList) * 20
+
+    # W_CAPSULE_COUNT = 20
+    # 胶囊同理，吃掉一个胶囊 = 获得 +20 的收益
+    # 20 -> 150 摆动问题
+    score -= len(capsules) * 150
+
+    # 返回最终的评估分数
+    return score
 
 # Abbreviation
 better = betterEvaluationFunction
